@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  email-processor:
+    build:
+      context: ./email-processor
+      dockerfile: Dockerfile
+    container_name: email-processor
+    restart: unless-stopped
+    environment:
+      # Email Configuration
+      - IMAP_SERVER=${IMAP_SERVER:-imap.gmail.com}
+      - IMAP_PORT=${IMAP_PORT:-993}
+      - EMAIL_ADDRESS=${EMAIL_ADDRESS}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - MAILBOX=${MAILBOX:-INBOX}
+      - USE_SSL=${USE_SSL:-true}
+      
+      # CSV Processing Configuration
+      - DOWNLOAD_FOLDER=/app/downloads
+      - CSV_FILTER_COLUMN=${CSV_FILTER_COLUMN:-status}
+      - CSV_FILTER_VALUE=${CSV_FILTER_VALUE:-completed}
+      - PAYMENT_AMOUNT_COLUMN=${PAYMENT_AMOUNT_COLUMN:-amount}
+      - PAYMENT_DATE_COLUMN=${PAYMENT_DATE_COLUMN:-date}
+      - PAYMENT_ID_COLUMN=${PAYMENT_ID_COLUMN:-transaction_id}
+      - CUSTOMER_ID_COLUMN=${CUSTOMER_ID_COLUMN:-customer_id}
+      
+      # Webhook Configuration
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN}
+      - WEBHOOK_TIMEOUT=${WEBHOOK_TIMEOUT:-30}
+      
+      # Browser Configuration
+      - BROWSER_HEADLESS=${BROWSER_HEADLESS:-true}
+      - DOWNLOAD_TIMEOUT=${DOWNLOAD_TIMEOUT:-60}
+      - IMPLICIT_WAIT=${IMPLICIT_WAIT:-10}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    
+    volumes:
+      # Persist downloads and logs
+      - email_processor_downloads:/app/downloads
+      - email_processor_logs:/app/logs
+      # Optional: Mount config for easy updates
+      - ./email-processor/env.example:/app/.env.example:ro
+    
+    networks:
+      - email_processor_network
+    
+    # Optional: Expose ports if you add a web interface later
+    # ports:
+    #   - "8080:8080"
+    
+    # Run with virtual display for browser automation
+    command: >
+      sh -c "
+        Xvfb :99 -screen 0 1024x768x16 &
+        python src/main.py --mode continuous --interval 30
+      "
+
+volumes:
+  email_processor_downloads:
+    driver: local
+  email_processor_logs:
+    driver: local
+
+networks:
+  email_processor_network:
+    driver: bridge

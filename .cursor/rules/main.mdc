@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+- Keep tasks as simple as possible.
+- Dont do anything unnecessary.
+- Each component should run smoothly in Docker and be included in the main docker-compose.yml
+- Use Context7 MCP when you need up-to-date and relevant information about software libraries and frameworks like React, Next.js, Tailwind, or Zod.

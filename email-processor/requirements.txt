@@ -1,0 +1,27 @@
+# Email processing
+email-validator==2.1.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Browser automation
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# File processing
+pandas==2.1.4
+rarfile==4.1
+py7zr==0.20.8
+
+# HTTP requests
+requests==2.31.0
+urllib3==2.1.0
+
+# Configuration and logging
+python-dotenv==1.0.0
+loguru==0.7.2
+
+# Data validation
+pydantic==2.5.2
+
+# Datetime processing
+python-dateutil==2.8.2
