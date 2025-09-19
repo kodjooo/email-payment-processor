@@ -148,7 +148,7 @@ Thumbs.db
 email-processor/downloads/
 email-processor/logs/
 email-processor/extracted/
-email-processor/.env
+
 
 # Node modules (if any)
 node_modules/

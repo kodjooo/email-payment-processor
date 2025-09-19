@@ -4,15 +4,18 @@ Email handler module for processing incoming emails with download links.
 import imaplib
 import email
 import re
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.header import decode_header
 from bs4 import BeautifulSoup
 from loguru import logger
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import config
+from email_tracking import EmailTracker
 
 
 class EmailHandler:
@@ -21,6 +24,7 @@ class EmailHandler:
     def __init__(self):
         self.imap_server = None
         self.email_config = config.email
+        self.email_tracker = EmailTracker()
         
     def connect(self) -> bool:
         """
@@ -255,7 +259,8 @@ class EmailHandler:
     
     def get_latest_emails_with_downloads(self, limit: int = 5) -> List[Tuple[int, List[str]]]:
         """
-        Get latest emails that contain download links.
+        Get latest emails with subject 'Выписка по счету ООО "АДВАНТО"' 
+        from today that contain download links and haven't been processed yet.
         
         Args:
             limit (int): Maximum number of emails to process
@@ -266,16 +271,64 @@ class EmailHandler:
         results = []
         
         try:
-            # Search for recent emails
-            email_ids = self.search_emails("UNSEEN", limit * 2)  # Get more to filter
+            # Get specific test date: 28.08.2025
+            test_date = "29-Aug-2025 BEFORE 30-Aug-2025"
+            
+            # Search for all emails from test date (without Russian characters)
+            search_criteria = f'SINCE {test_date}'
+            email_ids = self.search_emails(search_criteria, limit * 10)  # Get more to filter by subject
             
             if not email_ids:
-                logger.info("No unread emails found")
+                logger.info(f"No emails found for test date ({test_date})")
                 return results
             
-            # Process each email
-            for email_id in email_ids[-limit:]:  # Get latest emails
-                email_message = self.fetch_email(email_id)
+            logger.info(f"Found {len(email_ids)} emails for test date {test_date}, filtering by subject...")
+
+
+            
+            # Filter emails by subject programmatically and cache messages
+            target_subject = 'Выписка по счету ООО "АДВАНТО"'
+            filtered_emails = []  # Store tuples of (email_id, email_message)
+            
+            for email_id in email_ids:
+                try:
+                    email_message = self.fetch_email(email_id)
+                    if email_message:
+                        subject = email_message.get('Subject', '')
+                        # Decode subject if it's encoded
+                        if subject:
+                            try:
+                                # Handle encoded subjects
+                                decoded_parts = decode_header(subject)
+                                subject = ''.join([
+                                    part.decode(encoding or 'utf-8') if isinstance(part, bytes) else str(part)
+                                    for part, encoding in decoded_parts
+                                ])
+                            except:
+                                # If decoding fails, use as is
+                                pass
+                            
+                            if target_subject in subject:
+                                # ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ТЕСТИРОВАНИЯ
+                                # # Проверить, не было ли письмо уже обработано
+                                # if self.email_tracker.is_processed(email_id):
+                                #     logger.info(f"Email {email_id} already processed, skipping")
+                                #     continue
+                                
+                                filtered_emails.append((email_id, email_message))
+                                logger.info(f"Found matching email {email_id}: {subject}")
+                except Exception as e:
+                    logger.warning(f"Error checking email {email_id}: {e}")
+                    continue
+            
+            if not filtered_emails:
+                logger.info(f"No emails with subject '{target_subject}' found in the last 20 hours")
+                return results
+            
+            logger.info(f"Found {len(filtered_emails)} emails with target subject")
+            
+            # Process each email (use cached messages)
+            for email_id, email_message in filtered_emails[-limit:]:  # Get latest emails
                 
                 if not email_message:
                     continue

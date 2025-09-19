@@ -15,7 +15,6 @@ from email_handler import EmailContextManager
 from browser_automation import BrowserContextManager
 from file_processor import FileProcessor
 from webhook_sender import WebhookSender
-import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import config
 
@@ -30,11 +29,11 @@ class EmailProcessor:
     
     def setup_logging(self):
         """Set up logging configuration."""
+        # Полная очистка всех существующих обработчиков loguru
+        logger.remove()
+            
         log_level = config.log_level
         log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
-        
-        # Remove default logger
-        logger.remove()
         
         # Add console logger
         logger.add(
@@ -53,7 +52,7 @@ class EmailProcessor:
             level=log_level,
             format=log_format,
             rotation="10 MB",
-            retention="7 days"
+            retention="30 days"
         )
         
         logger.info("Email processor started")
@@ -110,9 +109,10 @@ class EmailProcessor:
                         payments = self.process_downloaded_files(downloaded_files)
                         all_payments.extend(payments)
                         
-                        # Mark email as read
+                        # Mark email as read and processed
                         email_handler.mark_as_read(email_id)
-                        logger.info(f"Marked email {email_id} as read")
+                        email_handler.email_tracker.mark_as_processed(email_id)
+                        logger.info(f"Marked email {email_id} as read and processed")
                         
                     except Exception as e:
                         error_msg = f"Error processing email {email_id}: {e}"
@@ -247,11 +247,6 @@ class EmailProcessor:
         try:
             logger.info(f"Sending webhook with {len(payments)} payments")
             
-            # Test webhook connection first
-            if not self.webhook_sender.test_webhook_connection():
-                logger.error("Webhook connection test failed")
-                return False
-            
             # Send payments in batches
             batch_results = self.webhook_sender.send_webhook_batch(payments, batch_size=50)
             
@@ -276,10 +271,77 @@ class EmailProcessor:
             # Clean up old extracted files
             self.file_processor.cleanup_extracted_files(keep_recent=3)
             
+            # Clean up old downloaded archives
+            self._cleanup_downloaded_files()
+            
             logger.info("Cleanup completed")
             
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+    
+    def _cleanup_downloaded_files(self, keep_recent: int = 5):
+        """Clean up old downloaded archive files."""
+        try:
+            download_folder = config.processing.download_folder
+            if not os.path.exists(download_folder):
+                logger.info(f"Download folder {download_folder} does not exist, nothing to clean")
+                return
+            
+            # Get all archive files sorted by modification time
+            archives = []
+            archive_extensions = ['.zip', '.rar', '.7z', '.tar', '.gz']
+            
+            for item in os.listdir(download_folder):
+                if item.lower().endswith(tuple(archive_extensions)):
+                    file_path = os.path.join(download_folder, item)
+                    if os.path.isfile(file_path):
+                        mtime = os.path.getmtime(file_path)
+                        size = os.path.getsize(file_path)
+                        archives.append((file_path, mtime, size))
+            
+            logger.info(f"Found {len(archives)} downloaded archives, keeping {keep_recent} most recent")
+            
+            # Sort by modification time (newest first)
+            archives.sort(key=lambda x: x[1], reverse=True)
+            
+            # Keep track of cleanup statistics
+            cleaned_count = 0
+            cleaned_size = 0
+            errors = 0
+            
+            # Remove old archives
+            for file_path, _, size in archives[keep_recent:]:
+                try:
+                    os.remove(file_path)
+                    cleaned_count += 1
+                    cleaned_size += size
+                    logger.info(f"Cleaned up old download: {os.path.basename(file_path)} ({self._format_size(size)})")
+                except Exception as e:
+                    errors += 1
+                    logger.warning(f"Error cleaning up {file_path}: {e}")
+            
+            # Log cleanup summary
+            if cleaned_count > 0:
+                logger.info(f"Download cleanup completed: removed {cleaned_count} files, freed {self._format_size(cleaned_size)}")
+            else:
+                logger.info("No old downloads to clean up")
+                
+            if errors > 0:
+                logger.warning(f"Download cleanup had {errors} errors")
+                
+        except Exception as e:
+            logger.error(f"Error during download cleanup: {e}")
+    
+    def _format_size(self, size_bytes: int) -> str:
+        """Format file size in human readable format."""
+        if size_bytes == 0:
+            return "0 B"
+        size_names = ["B", "KB", "MB", "GB"]
+        import math
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_names[i]}"
     
     def run_once(self) -> Dict[str, Any]:
         """
@@ -315,10 +377,9 @@ class EmailProcessor:
                 else:
                     logger.error(f"Cycle completed with errors: {results['errors']}")
                 
-                # Wait for next cycle
-                sleep_seconds = interval_minutes * 60
-                logger.info(f"Waiting {interval_minutes} minutes until next cycle")
-                time.sleep(sleep_seconds)
+                # Завершаем работу после первого цикла вместо ожидания
+                logger.info("Processing cycle completed. Exiting.")
+                break
                 
             except KeyboardInterrupt:
                 logger.info("Received interrupt signal, stopping continuous processing")

@@ -11,7 +11,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from loguru import logger
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -29,6 +28,50 @@ class BrowserAutomation:
         # Ensure download folder exists
         os.makedirs(self.download_folder, exist_ok=True)
     
+    def _cleanup_chrome_processes(self):
+        """Очистка зависших Chrome процессов и временных директорий."""
+        try:
+            import subprocess
+            import shutil
+            import glob
+            
+            # Убиваем все процессы Chrome/Chromium
+            try:
+                subprocess.run(['pkill', '-f', 'chrome'], check=False, capture_output=True)
+                subprocess.run(['pkill', '-f', 'chromium'], check=False, capture_output=True)
+                logger.debug("Killed existing Chrome processes")
+            except Exception as e:
+                logger.debug(f"Error killing Chrome processes: {e}")
+            
+            # Очищаем старые временные директории Chrome
+            try:
+                chrome_dirs = glob.glob('/tmp/chrome-*')
+                for dir_path in chrome_dirs:
+                    try:
+                        if os.path.exists(dir_path):
+                            shutil.rmtree(dir_path)
+                            logger.debug(f"Removed old Chrome directory: {dir_path}")
+                    except Exception as e:
+                        logger.debug(f"Could not remove {dir_path}: {e}")
+            except Exception as e:
+                logger.debug(f"Error cleaning Chrome directories: {e}")
+            
+            # Удаляем X11 lock файлы если они есть
+            try:
+                lock_files = glob.glob('/tmp/.X*-lock')
+                for lock_file in lock_files:
+                    try:
+                        if os.path.exists(lock_file):
+                            os.remove(lock_file)
+                            logger.debug(f"Removed X11 lock file: {lock_file}")
+                    except Exception as e:
+                        logger.debug(f"Could not remove lock file {lock_file}: {e}")
+            except Exception as e:
+                logger.debug(f"Error cleaning X11 lock files: {e}")
+                
+        except Exception as e:
+            logger.warning(f"Error in Chrome cleanup: {e}")
+
     def setup_driver(self) -> bool:
         """
         Set up Chrome WebDriver with appropriate options.
@@ -37,6 +80,13 @@ class BrowserAutomation:
             bool: True if setup successful, False otherwise
         """
         try:
+            # Предварительная очистка Chrome процессов и директорий
+            self._cleanup_chrome_processes()
+            
+            # Ждем немного чтобы процессы точно завершились
+            import time
+            time.sleep(2)
+            
             # Chrome options
             chrome_options = Options()
             
@@ -47,6 +97,36 @@ class BrowserAutomation:
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument("--disable-extensions")
+            chrome_options.add_argument("--disable-software-rasterizer")
+            chrome_options.add_argument("--display=:99")
+            chrome_options.add_argument("--disable-setuid-sandbox")
+            chrome_options.add_argument("--remote-debugging-port=0")
+            chrome_options.add_argument("--temp-profile")
+            
+            # Создаем уникальную директорию для пользовательских данных браузера
+            import time
+            import uuid
+            unique_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            self.user_data_dir = f"/tmp/chrome-{unique_id}"
+            chrome_options.add_argument(f"--user-data-dir={self.user_data_dir}")
+            
+            # Дополнительные аргументы для предотвращения блокировок
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-ipc-flooding-protection")
+            
+            # Дополнительные флаги для решения проблемы с user-data-dir
+            chrome_options.add_argument("--no-first-run")
+            chrome_options.add_argument("--no-default-browser-check")
+            chrome_options.add_argument("--disable-default-apps")
+            chrome_options.add_argument("--force-color-profile=srgb")
+            chrome_options.add_argument("--metrics-recording-only")
+            chrome_options.add_argument("--disable-background-networking")
+            chrome_options.add_argument("--single-process")  # Принудительно в одном процессе
             
             # Set download preferences
             prefs = {
@@ -57,8 +137,9 @@ class BrowserAutomation:
             }
             chrome_options.add_experimental_option("prefs", prefs)
             
-            # Set up Chrome driver
-            service = Service(ChromeDriverManager().install())
+            # Set up Chromium driver
+            chrome_options.binary_location = "/usr/bin/chromium"
+            service = Service("/usr/bin/chromedriver")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Set implicit wait
@@ -79,6 +160,15 @@ class BrowserAutomation:
                 logger.info("Browser driver closed")
             except Exception as e:
                 logger.warning(f"Error closing browser driver: {e}")
+        
+        # Очищаем созданную пользовательскую директорию Chrome
+        if hasattr(self, 'user_data_dir') and self.user_data_dir and os.path.exists(self.user_data_dir):
+            try:
+                import shutil
+                shutil.rmtree(self.user_data_dir)
+                logger.debug(f"Removed Chrome user data directory: {self.user_data_dir}")
+            except Exception as e:
+                logger.debug(f"Could not remove Chrome user data directory: {e}")
     
     def download_from_url(self, url: str, timeout: Optional[int] = None) -> Optional[str]:
         """

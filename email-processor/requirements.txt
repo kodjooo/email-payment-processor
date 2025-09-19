@@ -5,7 +5,6 @@ lxml==4.9.3
 
 # Browser automation
 selenium==4.15.2
-webdriver-manager==4.0.1
 
 # File processing
 pandas==2.1.4
@@ -25,3 +24,6 @@ pydantic==2.5.2
 
 # Datetime processing
 python-dateutil==2.8.2
+
+# Development tools (автоматическая перезагрузка при изменении файлов)
+watchdog==3.0.0

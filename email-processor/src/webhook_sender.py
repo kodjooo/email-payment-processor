@@ -36,28 +36,28 @@ class WebhookSender:
             # Prepare webhook payload
             webhook_data = {
                 "timestamp": datetime.utcnow().isoformat(),
-                "event_type": "payments_processed",
                 "data": {
                     "payments_count": len(payments),
-                    "payments": [],
-                    "summary": self._generate_summary(payments)
+                    "payments": []
                 }
             }
             
             # Format each payment
             for payment in payments:
+                # Получаем назначение платежа из raw_data
+                purpose = None
+                raw_data = payment.get("raw_data", {})
+                if raw_data:
+                    purpose = raw_data.get("Назначение платежа") or raw_data.get("назначение платежа")
+                
                 formatted_payment = {
                     "transaction_id": payment.get("transaction_id"),
                     "customer_id": payment.get("customer_id"),
                     "amount": self._format_amount(payment.get("amount")),
                     "currency": self._extract_currency(payment.get("amount")),
                     "date": self._format_date(payment.get("date")),
-                    "status": "processed",
-                    "source_file": payment.get("source_file", "").split("/")[-1] if payment.get("source_file") else None,
-                    "metadata": {
-                        "processed_at": datetime.utcnow().isoformat(),
-                        "processor_version": "1.0.0"
-                    }
+                    "purpose": purpose,  # Полное назначение платежа
+                    "source_file": payment.get("source_file", "").split("/")[-1] if payment.get("source_file") else None
                 }
                 
                 # Add any additional fields that might be useful
@@ -101,8 +101,10 @@ class WebhookSender:
         
         try:
             # Remove common currency symbols and formatting
-            amount_str = str(amount).replace(',', '').replace('$', '').replace('€', '').replace('₽', '').strip()
-            return float(amount_str)
+            amount_str = str(amount).replace(',', '.').replace('$', '').replace('€', '').replace('₽', '').strip()
+            amount_float = float(amount_str)
+            # Return int if it's a whole number, otherwise return float
+            return int(amount_float) if amount_float.is_integer() else amount_float
         except (ValueError, TypeError):
             logger.warning(f"Could not format amount: {amount}")
             return None
@@ -135,7 +137,7 @@ class WebhookSender:
             if symbol in amount_str:
                 return code
         
-        return "USD"  # Default currency
+        return "RUB"  # Default currency
     
     def _format_date(self, date_value: Any) -> Optional[str]:
         """
@@ -173,7 +175,7 @@ class WebhookSender:
             if not payments:
                 return {
                     "total_amount": 0,
-                    "currency": "USD",
+                    "currency": "RUB",
                     "count": 0,
                     "unique_customers": 0
                 }
@@ -198,9 +200,9 @@ class WebhookSender:
                     customer_ids.add(customer_id)
             
             return {
-                "total_amount": round(total_amount, 2),
+                "total_amount": int(total_amount) if total_amount == int(total_amount) else round(total_amount, 2),
                 "currencies": list(currencies),
-                "primary_currency": list(currencies)[0] if currencies else "USD",
+                "primary_currency": list(currencies)[0] if currencies else "RUB",
                 "count": len(payments),
                 "unique_customers": len(customer_ids),
                 "date_range": self._get_date_range(payments)
@@ -210,7 +212,7 @@ class WebhookSender:
             logger.error(f"Error generating summary: {e}")
             return {
                 "total_amount": 0,
-                "currency": "USD",
+                "currency": "RUB",
                 "count": len(payments),
                 "unique_customers": 0,
                 "error": str(e)
@@ -266,7 +268,40 @@ class WebhookSender:
             # Format payment data
             webhook_payload = self.format_payment_data(payments)
             
+            # Полный вывод данных вебхука в лог
             logger.info(f"Sending webhook with {len(payments)} payments to {self.webhook_config.webhook_url}")
+            logger.info(f"Webhook payload:")
+            logger.info(f"  - Timestamp: {webhook_payload.get('timestamp')}")
+            logger.info(f"  - Total payments: {webhook_payload.get('data', {}).get('payments_count', 0)}")
+            
+            # Источники файлов (один раз для всего вебхука)
+            source_files = set()
+            payments_data = webhook_payload.get('data', {}).get('payments', [])
+            for payment in payments_data:
+                if payment.get('source_file'):
+                    source_files.add(payment.get('source_file'))
+            
+            if source_files:
+                logger.info(f"  - Source files: {', '.join(source_files)}")
+            
+            # Детальная информация о каждом платеже
+            for i, payment in enumerate(payments_data, 1):
+                logger.info(f"  Payment {i}:")
+                logger.info(f"    - Transaction ID: {payment.get('transaction_id')}")
+                logger.info(f"    - Customer ID: {payment.get('customer_id')}")
+                logger.info(f"    - Amount: {payment.get('amount')}")
+                logger.info(f"    - Currency: {payment.get('currency')}")
+                # Показываем только дату без времени
+                date_str = payment.get('date', '')
+                if 'T' in date_str:
+                    date_only = date_str.split('T')[0]
+                    logger.info(f"    - Date: {date_only}")
+                else:
+                    logger.info(f"    - Date: {date_str}")
+                logger.info(f"    - Purpose: {payment.get('purpose')}")
+            
+            # Полный JSON payload для отладки (в debug режиме)
+            logger.debug(f"Full webhook payload JSON: {json.dumps(webhook_payload, ensure_ascii=False, indent=2)}")
             
             # Send POST request
             response = self.session.post(
@@ -275,20 +310,40 @@ class WebhookSender:
                 timeout=self.webhook_config.webhook_timeout
             )
             
+            # Логирование отправленного вебхука
+            logger.info(f"Webhook sent to {self.webhook_config.webhook_url}")
+            logger.info(f"Request headers: {dict(self.session.headers)}")
+            
             # Check response
             if response.status_code in [200, 201, 202]:
                 logger.info(f"Webhook sent successfully. Response: {response.status_code}")
                 
+                # Детальное логирование ответа сервера
+                logger.info(f"Response headers: {dict(response.headers)}")
+                logger.info(f"Response time: {response.elapsed.total_seconds():.2f}s")
+                
                 # Log response content if available
                 try:
                     response_data = response.json()
-                    logger.debug(f"Webhook response: {response_data}")
+                    logger.info(f"Server response (JSON): {json.dumps(response_data, ensure_ascii=False, indent=2)}")
                 except:
-                    logger.debug(f"Webhook response text: {response.text[:500]}")
+                    if response.text:
+                        logger.info(f"Server response (text): {response.text[:1000]}")
+                    else:
+                        logger.info("Server response: (empty)")
                 
                 return True
             else:
-                logger.error(f"Webhook failed with status {response.status_code}: {response.text}")
+                logger.error(f"Webhook failed with status {response.status_code}")
+                logger.error(f"Response headers: {dict(response.headers)}")
+                logger.error(f"Response time: {response.elapsed.total_seconds():.2f}s")
+                
+                # Логируем полный ответ при ошибке
+                if response.text:
+                    logger.error(f"Error response: {response.text[:1000]}")
+                else:
+                    logger.error("Error response: (empty)")
+                
                 return False
                 
         except requests.exceptions.Timeout:

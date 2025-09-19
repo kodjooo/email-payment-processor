@@ -7,6 +7,7 @@ import rarfile
 import py7zr
 import shutil
 import pandas as pd
+import re
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from loguru import logger
@@ -127,7 +128,12 @@ class FileProcessor:
     
     def process_csv_file(self, csv_path: str) -> List[Dict[str, Any]]:
         """
-        Process CSV file and extract payment information based on conditions.
+        Process CSV file and extract payment information. 
+        Processes all rows EXCEPT those containing CSV_FILTER_VALUE in CSV_FILTER_COLUMN.
+        Header row is automatically excluded by pandas.
+        
+        Payment ID extraction: searches for 4 consecutive digits > 2501 excluding 8000
+        from PAYMENT_ID_COLUMN. If not found, uses "-".
         
         Args:
             csv_path (str): Path to CSV file
@@ -140,18 +146,27 @@ class FileProcessor:
         try:
             logger.info(f"Processing CSV file: {csv_path}")
             
-            # Read CSV file
-            df = pd.read_csv(csv_path)
-            logger.info(f"Loaded CSV with {len(df)} rows")
+            # Попробуем определить разделитель автоматически
+            # Сначала попробуем с точкой с запятой (типично для русских CSV)
+            try:
+                df = pd.read_csv(csv_path, sep=';')
+                logger.info(f"Loaded CSV with ';' separator. Columns: {list(df.columns)}")
+            except Exception:
+                # Если не получилось, попробуем с запятой
+                df = pd.read_csv(csv_path, sep=',')
+                logger.info(f"Loaded CSV with ',' separator. Columns: {list(df.columns)}")
             
-            # Apply filter condition
+            logger.info(f"Loaded CSV with {len(df)} rows")
+            logger.info(f"Available columns: {list(df.columns)}")
+            
+            # Apply filter condition - exclude rows with filter value
             filter_column = self.processing_config.csv_filter_column
             filter_value = self.processing_config.csv_filter_value
             
             if filter_column in df.columns:
-                # Filter rows based on condition
-                filtered_df = df[df[filter_column] == filter_value]
-                logger.info(f"Filtered to {len(filtered_df)} rows where {filter_column} = {filter_value}")
+                # Filter rows based on condition - exclude rows with filter value
+                filtered_df = df[df[filter_column] != filter_value]
+                logger.info(f"Filtered to {len(filtered_df)} rows where {filter_column} != {filter_value} (excluding header)")
             else:
                 logger.warning(f"Filter column '{filter_column}' not found in CSV. Processing all rows.")
                 filtered_df = df
@@ -164,16 +179,26 @@ class FileProcessor:
                 'customer_id': self.processing_config.customer_id_column
             }
             
+            logger.info(f"Looking for columns: {payment_columns}")
+            
             for _, row in filtered_df.iterrows():
                 payment = {}
                 
                 # Extract each payment field
                 for field_name, column_name in payment_columns.items():
                     if column_name in df.columns:
-                        payment[field_name] = self._clean_value(row[column_name])
+                        # Use special extraction for transaction_id
+                        if field_name == 'transaction_id':
+                            payment[field_name] = self._extract_payment_id(row[column_name])
+                        else:
+                            payment[field_name] = self._clean_value(row[column_name])
                     else:
                         logger.warning(f"Column '{column_name}' not found for field '{field_name}'")
-                        payment[field_name] = None
+                        # Set default dash for missing transaction_id
+                        if field_name == 'transaction_id':
+                            payment[field_name] = "-"
+                        else:
+                            payment[field_name] = None
                 
                 # Add any additional fields from the row
                 payment['raw_data'] = row.to_dict()
@@ -191,6 +216,73 @@ class FileProcessor:
         except Exception as e:
             logger.error(f"Error processing CSV file {csv_path}: {e}")
             return payments
+    
+    def _extract_payment_id(self, value: Any) -> str:
+        """
+        Extract payment ID from cell value.
+        Improved algorithm:
+        1. Looks for contract numbers like C_516913
+        2. Looks for 4+ consecutive digits > 2501 excluding 8000  
+        3. Returns first 8 characters if nothing found
+        
+        Args:
+            value: Raw value from CSV cell
+            
+        Returns:
+            str: Payment ID or fallback value
+        """
+        try:
+            if pd.isna(value) or value is None:
+                return "-"
+            
+            # Convert to string for processing
+            text = str(value).strip()
+            
+            if not text:
+                return "-"
+            
+            # 1. Look for contract numbers like C_516913, C-516913, etc.
+            contract_match = re.search(r'[Cc][-_]?\d{6,}', text)
+            if contract_match:
+                return contract_match.group(0)
+            
+            # 2. Look for reference numbers like REF123456 or similar patterns
+            ref_match = re.search(r'[A-Za-z]{2,5}[-_]?\d{4,}', text)
+            if ref_match:
+                return ref_match.group(0)
+            
+            # 3. Find all 4+ digit numbers in the text (improved pattern)
+            # Ищем числа в различных контекстах: "Счёт 2491", "№2497", "счету №2497" и т.д.
+            numbers = re.findall(r'(?:счёт|счет|№|#|ID|id)\s*[№#]?\s*(\d{4,})', text, re.IGNORECASE)
+            
+            for num_str in numbers:
+                num = int(num_str)
+                # Check conditions: >= 2400 (to include 2491, 2497) and != 8000  
+                if num >= 2400 and num != 8000:
+                    logger.debug(f"Found payment ID via pattern match: {num_str} from '{text}'")
+                    return num_str
+            
+            # 4. Fallback: Find any 4+ digit numbers in the text
+            numbers = re.findall(r'\b\d{4,}\b', text)
+            
+            for num_str in numbers:
+                num = int(num_str)
+                # Check conditions: >= 2400 (to include 2491, 2497) and != 8000
+                if num >= 2400 and num != 8000:
+                    logger.debug(f"Found payment ID via general number match: {num_str} from '{text}'")
+                    return num_str
+            
+            # 5. Fallback: use first 8 characters of cleaned text as ID
+            cleaned_text = re.sub(r'[^\w\s-]', '', text)[:8]
+            if cleaned_text and cleaned_text != text:
+                return cleaned_text
+            
+            # 6. Last resort: return dash
+            return "-"
+            
+        except Exception as e:
+            logger.warning(f"Error extracting payment ID from value '{value}': {e}")
+            return "-"
     
     def _clean_value(self, value: Any) -> Any:
         """
@@ -222,11 +314,15 @@ class FileProcessor:
         Returns:
             bool: True if valid payment
         """
-        required_fields = ['amount', 'transaction_id']
+        # Check amount is present and not empty
+        amount = payment.get('amount')
+        if amount is None or amount == '':
+            return False
         
-        for field in required_fields:
-            if payment.get(field) is None or payment.get(field) == '':
-                return False
+        # Check transaction_id is present (can be "-" if not found)
+        transaction_id = payment.get('transaction_id')
+        if transaction_id is None or transaction_id == '':
+            return False
         
         # Check if amount is numeric
         try:
@@ -282,6 +378,7 @@ class FileProcessor:
         """
         try:
             if not os.path.exists(self.extracted_folder):
+                logger.info(f"Extracted folder {self.extracted_folder} does not exist, nothing to clean")
                 return
             
             # Get all extraction folders sorted by modification time
@@ -292,19 +389,66 @@ class FileProcessor:
                     mtime = os.path.getmtime(folder_path)
                     folders.append((folder_path, mtime))
             
+            logger.info(f"Found {len(folders)} extracted folders, keeping {keep_recent} most recent")
+            
             # Sort by modification time (newest first)
             folders.sort(key=lambda x: x[1], reverse=True)
+            
+            # Keep track of cleanup statistics
+            cleaned_count = 0
+            cleaned_size = 0
+            errors = 0
             
             # Remove old folders
             for folder_path, _ in folders[keep_recent:]:
                 try:
+                    # Calculate folder size before deletion
+                    folder_size = self._get_folder_size(folder_path)
                     shutil.rmtree(folder_path)
-                    logger.info(f"Cleaned up old extraction: {folder_path}")
+                    cleaned_count += 1
+                    cleaned_size += folder_size
+                    logger.info(f"Cleaned up old extraction: {os.path.basename(folder_path)} ({self._format_size(folder_size)})")
                 except Exception as e:
+                    errors += 1
                     logger.warning(f"Error cleaning up {folder_path}: {e}")
+            
+            # Log cleanup summary
+            if cleaned_count > 0:
+                logger.info(f"Cleanup completed: removed {cleaned_count} folders, freed {self._format_size(cleaned_size)}")
+            else:
+                logger.info("No old extractions to clean up")
+                
+            if errors > 0:
+                logger.warning(f"Cleanup had {errors} errors")
             
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+    
+    def _get_folder_size(self, folder_path: str) -> int:
+        """Get the total size of a folder in bytes."""
+        total_size = 0
+        try:
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    try:
+                        total_size += os.path.getsize(filepath)
+                    except (OSError, FileNotFoundError):
+                        pass
+        except Exception:
+            pass
+        return total_size
+    
+    def _format_size(self, size_bytes: int) -> str:
+        """Format file size in human readable format."""
+        if size_bytes == 0:
+            return "0 B"
+        size_names = ["B", "KB", "MB", "GB"]
+        import math
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_names[i]}"
     
     def get_file_info(self, file_path: str) -> Dict[str, Any]:
         """
