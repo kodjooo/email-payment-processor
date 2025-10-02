@@ -33,7 +33,7 @@ docker-compose up email-processor
 
 ```bash
 # Клонируйте репозиторий
-git clone <your-repo-url>
+git clone https://github.com/kodjooo/email-payment-processor.git
 cd email-processor
 
 # Настройте конфигурацию

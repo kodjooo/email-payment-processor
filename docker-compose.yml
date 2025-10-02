@@ -44,6 +44,9 @@ services:
     
     networks:
       - email_processor_network
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     
     # Run with virtual display for browser automation
     command: >
