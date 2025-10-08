@@ -31,6 +31,7 @@ services:
       # Browser Configuration
       - BROWSER_HEADLESS=${BROWSER_HEADLESS:-true}
       - DOWNLOAD_TIMEOUT=${DOWNLOAD_TIMEOUT:-60}
+      - DOWNLOAD_TIMEOUT=180
       - IMPLICIT_WAIT=${IMPLICIT_WAIT:-10}
       
       # Logging
@@ -52,6 +53,7 @@ services:
     # Run with virtual display for browser automation
     command: >
       sh -c "
+        mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && \
         Xvfb :99 -screen 0 1024x768x16 &
         python src/main.py --mode once
       "
