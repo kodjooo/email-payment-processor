@@ -91,7 +91,8 @@ class BrowserAutomation:
             chrome_options = Options()
             
             if self.browser_config.headless:
-                chrome_options.add_argument("--headless")
+                # Используем новый headless режим для стабильности
+                chrome_options.add_argument("--headless=new")
             
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
@@ -101,8 +102,9 @@ class BrowserAutomation:
             chrome_options.add_argument("--disable-software-rasterizer")
             chrome_options.add_argument("--display=:99")
             chrome_options.add_argument("--disable-setuid-sandbox")
-            chrome_options.add_argument("--remote-debugging-port=0")
-            chrome_options.add_argument("--temp-profile")
+            chrome_options.add_argument("--remote-debugging-port=9222")
+            chrome_options.add_argument("--no-zygote")
+            chrome_options.add_argument("--no-startup-window")
             
             # Создаем уникальную директорию для пользовательских данных браузера
             import time
@@ -113,7 +115,7 @@ class BrowserAutomation:
             
             # Дополнительные аргументы для предотвращения блокировок
             chrome_options.add_argument("--disable-web-security")
-            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor,Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints,UseOutOfBlinkCors,site-per-process")
             chrome_options.add_argument("--disable-background-timer-throttling")
             chrome_options.add_argument("--disable-backgrounding-occluded-windows")
             chrome_options.add_argument("--disable-renderer-backgrounding")
@@ -126,7 +128,7 @@ class BrowserAutomation:
             chrome_options.add_argument("--force-color-profile=srgb")
             chrome_options.add_argument("--metrics-recording-only")
             chrome_options.add_argument("--disable-background-networking")
-            chrome_options.add_argument("--single-process")  # Принудительно в одном процессе
+            # Не форсируем single-process, т.к. это вызывает нестабильность на новых версиях
             
             # Set download preferences
             prefs = {
@@ -138,8 +140,9 @@ class BrowserAutomation:
             chrome_options.add_experimental_option("prefs", prefs)
             
             # Set up Chromium driver
+            # Явно указываем пути бинарников Chromium/ChromeDriver из пакетов Debian
             chrome_options.binary_location = "/usr/bin/chromium"
-            service = Service("/usr/bin/chromedriver")
+            service = Service("/usr/lib/chromium/chromedriver" if os.path.exists("/usr/lib/chromium/chromedriver") else "/usr/bin/chromedriver")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Set implicit wait
