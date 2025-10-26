@@ -104,7 +104,6 @@ class BrowserAutomation:
             chrome_options.add_argument("--disable-setuid-sandbox")
             chrome_options.add_argument("--remote-debugging-port=9222")
             chrome_options.add_argument("--no-zygote")
-            chrome_options.add_argument("--no-startup-window")
             
             # Создаем уникальную директорию для пользовательских данных браузера
             import time
@@ -142,6 +141,7 @@ class BrowserAutomation:
             # Set up Chromium driver
             # Явно указываем пути бинарников Chromium/ChromeDriver из пакетов Debian
             chrome_options.binary_location = "/usr/bin/chromium"
+            logger.debug(f"Starting Chrome with options: {chrome_options.arguments}")
             service = Service("/usr/lib/chromium/chromedriver" if os.path.exists("/usr/lib/chromium/chromedriver") else "/usr/bin/chromedriver")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             

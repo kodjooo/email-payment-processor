@@ -1,7 +1,4 @@
----
-description: Основные правила и архитекура сервиса
-alwaysApply: true
----
+# AGENTS.md — инструкции для AI-агента (Codex и др.)
 
 Основные правила  описаны в 'docs/arch-rules.md'
 Бизнес требования к сервису описаны в 'docs/requirements.md'

@@ -271,8 +271,8 @@ class EmailHandler:
         results = []
         
         try:
-            # Get specific test date: 28.08.2025
-            test_date = "29-Aug-2025 BEFORE 30-Aug-2025"
+            # Get specific test date: 25.10.2025
+            test_date = "25-Oct-2025 BEFORE 26-Oct-2025"
             
             # Search for all emails from test date (without Russian characters)
             search_criteria = f'SINCE {test_date}'
