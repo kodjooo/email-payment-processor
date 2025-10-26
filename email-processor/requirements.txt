@@ -24,6 +24,7 @@ pydantic==2.5.2
 
 # Datetime processing
 python-dateutil==2.8.2
+pytz==2024.1
 
 # Development tools (автоматическая перезагрузка при изменении файлов)
 watchdog==3.0.0

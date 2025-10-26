@@ -5,7 +5,9 @@ Orchestrates the entire workflow from email processing to webhook sending.
 import os
 import sys
 import time
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+import pytz
 from loguru import logger
 
 # Add src directory to path for imports
@@ -17,6 +19,7 @@ from file_processor import FileProcessor
 from webhook_sender import WebhookSender
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import config
+from scheduler import calculate_next_run_time as scheduler_calculate_next_run_time
 
 
 class EmailProcessor:
@@ -25,6 +28,7 @@ class EmailProcessor:
     def __init__(self):
         self.file_processor = FileProcessor()
         self.webhook_sender = WebhookSender()
+        self.schedule_config = config.schedule
         self.setup_logging()
     
     def setup_logging(self):
@@ -388,6 +392,48 @@ class EmailProcessor:
                 logger.error(f"Unexpected error in continuous processing: {e}")
                 time.sleep(60)  # Wait 1 minute before retrying
 
+    def calculate_next_run_time(self, current_time: Optional[datetime] = None) -> datetime:
+        """Рассчитать дату и время следующего запуска с учетом часового пояса."""
+        return scheduler_calculate_next_run_time(self.schedule_config, current_time)
+
+    def run_daily_schedule(self):
+        """Запуск по ежедневному расписанию с использованием pytz."""
+        tz = pytz.timezone(self.schedule_config.timezone)
+        logger.info(
+            f"Ежедневный планировщик активирован: "
+            f"{self.schedule_config.hour:02d}:{self.schedule_config.minute:02d} "
+            f"{self.schedule_config.timezone}"
+        )
+        
+        while True:
+            try:
+                next_run = self.calculate_next_run_time()
+                now = datetime.now(tz)
+                wait_seconds = max((next_run - now).total_seconds(), 0)
+                wait_minutes = wait_seconds / 60
+                
+                logger.info(
+                    f"Следующий запуск: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')} "
+                    f"(через {wait_minutes:.1f} минут)"
+                )
+                
+                time.sleep(wait_seconds)
+                
+                logger.info("Запуск ежедневного цикла обработки")
+                results = self.run_once()
+                
+                if results["success"]:
+                    logger.info("Ежедневный цикл завершился успешно")
+                else:
+                    logger.error(f"Ежедневный цикл завершился с ошибками: {results['errors']}")
+            
+            except KeyboardInterrupt:
+                logger.info("Получен сигнал остановки. Планировщик завершается.")
+                break
+            except Exception as e:
+                logger.error(f"Неожиданная ошибка планировщика: {e}")
+                time.sleep(60)
+
 
 def main():
     """Main entry point."""
@@ -396,9 +442,9 @@ def main():
     parser = argparse.ArgumentParser(description="Email Payment Processor")
     parser.add_argument(
         "--mode",
-        choices=["once", "continuous"],
-        default="once",
-        help="Run mode: 'once' for single execution, 'continuous' for continuous monitoring"
+        choices=["once", "continuous", "daily"],
+        default="daily",
+        help="Run mode: 'once' for single execution, 'continuous' for continuous monitoring, 'daily' for timezone-based daily runs"
     )
     parser.add_argument(
         "--interval",
@@ -422,6 +468,9 @@ def main():
         
         elif args.mode == "continuous":
             processor.run_continuous(args.interval)
+        
+        elif args.mode == "daily":
+            processor.run_daily_schedule()
     
     except Exception as e:
         logger.error(f"Fatal error: {e}")

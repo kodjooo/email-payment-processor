@@ -52,12 +52,20 @@ class BrowserConfig:
     implicit_wait: int = int(os.getenv('IMPLICIT_WAIT', '10'))
 
 @dataclass
+class ScheduleConfig:
+    """Настройки ежедневного расписания запуска."""
+    timezone: str = os.getenv('SCHEDULE_TIMEZONE', 'Europe/Moscow')
+    hour: int = int(os.getenv('SCHEDULE_HOUR', '11'))
+    minute: int = int(os.getenv('SCHEDULE_MINUTE', '0'))
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     email: EmailConfig
     processing: ProcessingConfig
     webhook: WebhookConfig
     browser: BrowserConfig
+    schedule: ScheduleConfig
     log_level: str = os.getenv('LOG_LEVEL', 'INFO')
     
     def __init__(self):
@@ -65,6 +73,7 @@ class AppConfig:
         self.processing = ProcessingConfig()
         self.webhook = WebhookConfig()
         self.browser = BrowserConfig()
+        self.schedule = ScheduleConfig()
 
 # Global configuration instance
 config = AppConfig()
