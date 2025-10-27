@@ -89,7 +89,13 @@ USE_SSL=true
 # Webhook Configuration (обязательно)
 WEBHOOK_URL=https://your-server.com/webhook/payments
 WEBHOOK_TOKEN=your_secret_token
+# Данные для Basic-авторизации (если требуется)
+WEBHOOK_BASIC_USERNAME=
+WEBHOOK_BASIC_PASSWORD=
 WEBHOOK_TIMEOUT=30
+
+- `WEBHOOK_TOKEN` — Bearer-токен, оставьте пустым если авторизация не требуется.
+- `WEBHOOK_BASIC_USERNAME` / `WEBHOOK_BASIC_PASSWORD` — учетные данные для HTTP Basic (опционально).
 
 # CSV Processing Configuration
 CSV_FILTER_COLUMN="Наименование контрагента"

@@ -36,13 +36,19 @@ class WebhookConfig:
     webhook_url: str = os.getenv('WEBHOOK_URL', '')
     webhook_headers: dict = None
     webhook_timeout: int = int(os.getenv('WEBHOOK_TIMEOUT', '30'))
+    token: str = os.getenv('WEBHOOK_TOKEN', '')
+    basic_username: str = os.getenv('WEBHOOK_BASIC_USERNAME', '')
+    basic_password: str = os.getenv('WEBHOOK_BASIC_PASSWORD', '')
     
     def __post_init__(self):
         if self.webhook_headers is None:
             self.webhook_headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f"Bearer {os.getenv('WEBHOOK_TOKEN', '')}"
+                'Content-Type': 'application/json'
             }
+        
+        token = (self.token or "").strip()
+        if token:
+            self.webhook_headers['Authorization'] = f"Bearer {token}"
 
 @dataclass
 class BrowserConfig:

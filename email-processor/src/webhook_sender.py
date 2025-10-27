@@ -21,6 +21,11 @@ class WebhookSender:
         
         # Set default headers
         self.session.headers.update(self.webhook_config.webhook_headers)
+        
+        username = (self.webhook_config.basic_username or "").strip()
+        password = (self.webhook_config.basic_password or "").strip()
+        if username and password:
+            self.session.auth = (username, password)
     
     def format_payment_data(self, payments: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
