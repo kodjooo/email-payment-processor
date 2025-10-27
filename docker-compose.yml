@@ -26,6 +26,8 @@ services:
       # Webhook Configuration
       - WEBHOOK_URL=${WEBHOOK_URL}
       - WEBHOOK_TOKEN=${WEBHOOK_TOKEN}
+      - WEBHOOK_BASIC_USERNAME=${WEBHOOK_BASIC_USERNAME:-}
+      - WEBHOOK_BASIC_PASSWORD=${WEBHOOK_BASIC_PASSWORD:-}
       - WEBHOOK_TIMEOUT=${WEBHOOK_TIMEOUT:-30}
       
       # Browser Configuration

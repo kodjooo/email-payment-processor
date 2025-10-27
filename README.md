@@ -37,14 +37,14 @@ docker-compose up -d email-processor
 ```bash
 # Клонируйте репозиторий
 git clone https://github.com/kodjooo/email-payment-processor.git
-cd email-processor
+cd email-payment-processor
 
 # Настройте конфигурацию
 # Создайте .env файл в корне проекта (рядом с docker-compose.yml)
 nano .env
 
 # Запустите систему (рекомендуемый способ)
-docker-compose up email-processor
+docker compose up email-processor
 
 # Альтернативно через docker run
 docker run --rm --name email-processor --env-file .env emailprocessor-email-processor:latest
@@ -89,13 +89,7 @@ USE_SSL=true
 # Webhook Configuration (обязательно)
 WEBHOOK_URL=https://your-server.com/webhook/payments
 WEBHOOK_TOKEN=your_secret_token
-# Данные для Basic-авторизации (если требуется)
-WEBHOOK_BASIC_USERNAME=
-WEBHOOK_BASIC_PASSWORD=
 WEBHOOK_TIMEOUT=30
-
-- `WEBHOOK_TOKEN` — Bearer-токен, оставьте пустым если авторизация не требуется.
-- `WEBHOOK_BASIC_USERNAME` / `WEBHOOK_BASIC_PASSWORD` — учетные данные для HTTP Basic (опционально).
 
 # CSV Processing Configuration
 CSV_FILTER_COLUMN="Наименование контрагента"
