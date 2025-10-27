@@ -111,7 +111,6 @@ LOG_LEVEL=INFO
 SCHEDULE_TIMEZONE=Europe/Moscow
 SCHEDULE_HOUR=11
 SCHEDULE_MINUTE=0
-RUN_ON_START=true
 ```
 
 ## 🏗️ Архитектура
@@ -281,8 +280,6 @@ docker-compose up -d email-processor
 ```bash
 docker compose run --rm email-processor
 ```
-
-При старте контейнер запускается тестовый прогон, чтобы сразу проверить доступность почты и вебхука. Поведение можно отключить переменной `RUN_ON_START=false` в `.env`.
 
 ## 📊 Логирование
 
