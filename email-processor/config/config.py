@@ -57,6 +57,7 @@ class ScheduleConfig:
     timezone: str = os.getenv('SCHEDULE_TIMEZONE', 'Europe/Moscow')
     hour: int = int(os.getenv('SCHEDULE_HOUR', '11'))
     minute: int = int(os.getenv('SCHEDULE_MINUTE', '0'))
+    run_on_start: bool = os.getenv('RUN_ON_START', 'true').lower() == 'true'
 
 @dataclass
 class AppConfig:

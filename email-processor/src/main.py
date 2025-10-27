@@ -405,6 +405,19 @@ class EmailProcessor:
             f"{self.schedule_config.timezone}"
         )
         
+        if self.schedule_config.run_on_start:
+            logger.info("Начальный тестовый прогон включен, выполняем обработку.")
+            initial_results = self.run_once()
+            if initial_results["success"]:
+                logger.info("Начальный прогон завершился успешно.")
+            else:
+                logger.error(
+                    "Начальный прогон завершился с ошибками.",
+                    extra={"errors": initial_results["errors"]}
+                )
+        else:
+            logger.info("Начальный тестовый прогон отключен (RUN_ON_START=false).")
+        
         while True:
             try:
                 next_run = self.calculate_next_run_time()
