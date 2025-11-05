@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import decode_header
 from bs4 import BeautifulSoup
+import pytz
 from loguru import logger
 import sys
 import os
@@ -271,18 +272,18 @@ class EmailHandler:
         results = []
         
         try:
-            # Get specific test date: 25.10.2025
-            test_date = "25-Oct-2025 BEFORE 26-Oct-2025"
-            
-            # Search for all emails from test date (without Russian characters)
-            search_criteria = f'SINCE {test_date}'
+            tz = pytz.timezone(config.schedule.timezone)
+            now_tz = datetime.now(tz)
+            start_date = now_tz.strftime("%d-%b-%Y")
+            next_day = (now_tz + timedelta(days=1)).strftime("%d-%b-%Y")
+            search_criteria = f'SINCE {start_date} BEFORE {next_day}'
             email_ids = self.search_emails(search_criteria, limit * 10)  # Get more to filter by subject
             
             if not email_ids:
-                logger.info(f"No emails found for test date ({test_date})")
+                logger.info(f"No emails found for current day ({start_date})")
                 return results
             
-            logger.info(f"Found {len(email_ids)} emails for test date {test_date}, filtering by subject...")
+            logger.info(f"Found {len(email_ids)} emails for {start_date}, filtering by subject...")
 
 
             
@@ -309,11 +310,9 @@ class EmailHandler:
                                 pass
                             
                             if target_subject in subject:
-                                # ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ТЕСТИРОВАНИЯ
-                                # # Проверить, не было ли письмо уже обработано
-                                # if self.email_tracker.is_processed(email_id):
-                                #     logger.info(f"Email {email_id} already processed, skipping")
-                                #     continue
+                                if self.email_tracker.is_processed(email_id):
+                                    logger.info(f"Email {email_id} already processed, skipping")
+                                    continue
                                 
                                 filtered_emails.append((email_id, email_message))
                                 logger.info(f"Found matching email {email_id}: {subject}")
@@ -322,7 +321,7 @@ class EmailHandler:
                     continue
             
             if not filtered_emails:
-                logger.info(f"No emails with subject '{target_subject}' found in the last 20 hours")
+                logger.info(f"No emails with subject '{target_subject}' found for {start_date}")
                 return results
             
             logger.info(f"Found {len(filtered_emails)} emails with target subject")
